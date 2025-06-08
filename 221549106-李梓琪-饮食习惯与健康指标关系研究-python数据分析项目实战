@@ -1,0 +1,398 @@
+import pandas as pd
+import numpy as np
+import os
+
+# 创建目录
+os.makedirs('data', exist_ok=True)
+
+# 公共配置
+np.random.seed(42)  # 固定随机种子
+common_columns = ['id', 'age', 'gender', 'bmi', 'smoker', 'income', 'education', 'health_status']
+
+# 缺失值概率配置
+missing_config = {
+    'low': 0.02,    # 低缺失率（如ID、年龄）
+    'medium': 0.05, # 中缺失率（如BMI、教育）
+    'high': 0.10    # 高缺失率（如收入）
+}
+
+# 异常值配置
+outlier_config = {
+    'age': {'min': 0, 'max': 120, 'outlier_prob': 0.01},  # 年龄>120为异常
+    'bmi': {'min': 10, 'max': 50, 'outlier_prob': 0.02},  # BMI<10或>50为异常
+    'income': {'max_std': 5, 'outlier_prob': 0.03}        # 收入超出5倍标准差为异常
+}
+
+def add_missing_values(df, col, missing_prob):
+    """为指定列添加缺失值"""
+    mask = np.random.random(size=len(df)) < missing_prob
+    df.loc[mask, col] = np.nan
+    return df
+
+def add_outliers(df, col, config):
+    """为数值列添加异常值"""
+    if col == 'income':
+        # 基于标准差的异常值（右偏）
+        mean, std = df[col].mean(), df[col].std()
+        outliers = mean + config['max_std'] * std * np.abs(np.random.randn(int(len(df) * config['outlier_prob'])))
+        mask = np.random.choice(len(df), size=int(len(df) * config['outlier_prob']), replace=False)
+        df.loc[mask, col] = np.maximum(outliers, df.loc[mask, col] * 2)  # 确保异常值足够大
+    else:
+        # 基于范围的异常值
+        mask = np.random.random(size=len(df)) < config['outlier_prob']
+        df.loc[mask, col] = np.random.choice(
+            [config['min'] - 10, config['max'] + 10], 
+            size=mask.sum()
+        )
+    return df
+
+# 1. CHNS数据（中国健康与营养调查）
+chns_data = pd.DataFrame({
+    'id': range(1000, 1100),
+    'age': np.random.randint(18, 80, size=100),
+    'gender': np.random.choice(['Male', 'Female'], size=100),
+    'bmi': np.random.uniform(18, 35, size=100).round(1),
+    'smoker': np.random.choice([0, 1], size=100),
+    'income': np.random.normal(5, 2, size=100).clip(0).round(1),  # 收入非负
+    'education': np.random.choice(['None', 'Primary', 'Secondary', 'Tertiary'], size=100),
+    'health_status': np.random.choice(['Excellent', 'Good', 'Fair', 'Poor'], size=100)
+})
+
+# 添加缺失值
+chns_data = add_missing_values(chns_data, 'income', missing_config['high'])
+chns_data = add_missing_values(chns_data, 'bmi', missing_config['medium'])
+chns_data = add_missing_values(chns_data, 'education', missing_config['low'])
+
+# 添加异常值
+chns_data = add_outliers(chns_data, 'age', outlier_config['age'])
+chns_data = add_outliers(chns_data, 'bmi', outlier_config['bmi'])
+chns_data = add_outliers(chns_data, 'income', outlier_config['income'])
+
+chns_data.to_csv('data/CHNS_data_with_issues.csv', index=False)
+
+# 2. CHARLS数据（中国健康与养老追踪调查）
+charls_data = pd.DataFrame({
+    'id': ['P' + str(i) for i in range(100, 200)],
+    'age': np.random.randint(45, 90, size=100),
+    'gender': np.random.choice(['Male', 'Female'], size=100),
+    'bmi': np.random.uniform(18, 35, size=100).round(1),
+    'smoker': np.random.choice([0, 1], size=100),
+    'income': np.random.normal(3, 1.5, size=100).clip(0).round(1),
+    'education': np.random.choice(['None', 'Primary', 'Secondary', 'Tertiary'], size=100),
+    'health_status': np.random.choice(['Excellent', 'Good', 'Fair', 'Poor'], size=100)
+})
+
+# 添加缺失值（老年人数据缺失率更高）
+charls_data = add_missing_values(charls_data, 'gender', missing_config['medium'])
+charls_data = add_missing_values(charls_data, 'income', missing_config['high'] * 1.5)  # 收入缺失率更高
+charls_data = add_missing_values(charls_data, 'health_status', missing_config['low'])
+
+# 添加异常值
+charls_data = add_outliers(charls_data, 'age', {'min': 45, 'max': 90, 'outlier_prob': 0.02})  # 年龄>90为异常
+charls_data.loc[charls_data.sample(frac=0.01).index, 'bmi'] = 60  # 极端肥胖值
+
+charls_data.to_csv('data/CHARLS_data_with_issues.csv', index=False)
+
+# 3. NHANES数据（美国国家健康与营养调查）
+nhanes_data = pd.DataFrame({
+    'id': range(100001, 100101),
+    'age': np.random.randint(0, 80, size=100),
+    'gender': np.random.choice(['Male', 'Female'], size=100),
+    'bmi': np.random.uniform(15, 45, size=100).round(1),
+    'smoker': np.random.choice([0, 1], size=100),
+    'income': np.random.normal(4, 2.5, size=100).clip(0).round(1),
+    'education': np.random.choice(['None', 'Primary', 'Secondary', 'Tertiary'], size=100),
+    'health_status': np.random.choice(['Excellent', 'Good', 'Fair', 'Poor'], size=100)
+})
+
+# 添加缺失值
+nhanes_data = add_missing_values(nhanes_data, 'smoker', missing_config['medium'])
+nhanes_data = add_missing_values(nhanes_data, 'bmi', missing_config['low'])
+nhanes_data = add_missing_values(nhanes_data, 'education', missing_config['low'])
+
+# 添加异常值（模拟数据录入错误）
+nhanes_data.loc[nhanes_data.sample(frac=0.02).index, 'age'] = 200  # 不可能年龄
+nhanes_data.loc[nhanes_data.sample(frac=0.01).index, 'gender'] = 'Unknown'  # 无效性别
+
+nhanes_data.to_csv('data/NHANES_data_with_issues.csv', index=False)
+
+# 4. UKB数据（英国生物银行）
+ukb_data = pd.DataFrame({
+    'id': range(1000000, 1000100),
+    'age': np.random.randint(40, 70, size=100),
+    'gender': np.random.choice(['Male', 'Female'], size=100),
+    'bmi': np.random.uniform(18, 40, size=100).round(1),
+    'smoker': np.random.choice([0, 1], size=100),
+    'income': np.random.normal(6, 3, size=100).clip(0).round(1),
+    'education': np.random.choice(['None', 'Primary', 'Secondary', 'Tertiary'], size=100),
+    'health_status': np.random.choice(['Excellent', 'Good', 'Fair', 'Poor'], size=100)
+})
+
+# 添加缺失值
+ukb_data = add_missing_values(ukb_data, 'income', missing_config['high'])
+ukb_data = add_missing_values(ukb_data, 'education', missing_config['low'])
+
+# 添加异常值（模拟极端值）
+ukb_data.loc[ukb_data.sample(frac=0.03).index, 'bmi'] = np.random.uniform(60, 80, size=int(0.03*100))  # 极端肥胖
+ukb_data.loc[ukb_data.sample(frac=0.01).index, 'health_status'] = 'Invalid'  # 无效分类
+
+ukb_data.to_csv('data/UKB_data_with_issues.csv', index=False)
+
+print("所有数据集已生成，包含缺失值和异常值！")
+
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+def clean_data(df):
+    """
+    综合数据清洗函数：
+    1. 替换无效分类值 → NaN
+    2. 修剪极端值（99%分位数）
+    3. 填充缺失值（中位数/众数）
+    4. 返回清洗后的DataFrame和报告
+    """
+    # 记录清洗报告
+    report = {
+        'invalid_replaced': {},
+        'outliers_clipped': {},
+        'missing_filled': {}
+    }
+    
+    # --- 步骤1：替换无效分类值 ---
+    categorical_cols = df.select_dtypes(include=['object']).columns
+    for col in categorical_cols:
+        invalid_values = df[col].unique()[~df[col].isin(df[col].dropna().unique())]  # 找出非标准分类值
+        if len(invalid_values) > 0:
+            report['invalid_replaced'][col] = list(invalid_values)
+            df[col] = df[col].replace(invalid_values, np.nan)
+    
+    # --- 步骤2：修剪极端值（数值变量）---
+    numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns
+    for col in numeric_cols:
+        if col == 'id':  # 跳过ID列
+            continue
+        lower = df[col].quantile(0.01)  # 下界（1%分位数）
+        upper = df[col].quantile(0.99)  # 上界（99%分位数）
+        clipped_count = ((df[col] < lower) | (df[col] > upper)).sum()
+        if clipped_count > 0:
+            report['outliers_clipped'][col] = {
+                'lower_bound': lower,
+                'upper_bound': upper,
+                'clipped_count': clipped_count
+            }
+            df[col] = df[col].clip(lower, upper)
+    
+    # --- 步骤3：填充缺失值 ---
+    # 数值变量用中位数
+    for col in numeric_cols:
+        if df[col].isna().any():
+            median_val = df[col].median()
+            df[col].fillna(median_val, inplace=True)
+            report['missing_filled'][col] = {
+                'method': 'median',
+                'value': median_val,
+                'missing_count': df[col].isna().sum()
+            }
+    # 分类变量用众数
+    for col in categorical_cols:
+        if df[col].isna().any():
+            mode_val = df[col].mode()[0]
+            df[col].fillna(mode_val, inplace=True)
+            report['missing_filled'][col] = {
+                'method': 'mode',
+                'value': mode_val,
+                'missing_count': df[col].isna().sum()
+            }
+    
+    return df, report
+
+def plot_data_distribution(df, dataset_name):
+    """绘制数值变量的箱线图和分类变量的计数图"""
+    # 数值变量箱线图
+    numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns.drop('id')
+    if len(numeric_cols) > 0:
+        plt.figure(figsize=(15, 6))
+        sns.boxplot(data=df[numeric_cols])
+        plt.title(f'{dataset_name} - 数值变量分布（清洗后）')
+        plt.xticks(rotation=45)
+        plt.show()
+    
+    # 分类变量计数图（示例：health_status）
+    if 'health_status' in df.columns:
+        plt.figure(figsize=(10, 4))
+        sns.countplot(data=df, x='health_status', order=['Excellent', 'Good', 'Fair', 'Poor'])
+        plt.title(f'{dataset_name} - 健康状态分布（清洗后）')
+        plt.show()
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os
+
+# 创建输出目录
+os.makedirs('data/cleaned', exist_ok=True)
+os.makedirs('plots', exist_ok=True)
+
+def clean_data(df):
+    """静默清洗数据：替换无效值、修剪极端值、填充缺失值"""
+    # 替换无效分类值
+    categorical_cols = df.select_dtypes(include=['object']).columns
+    for col in categorical_cols:
+        invalid_values = [x for x in df[col].unique() if x not in df[col].dropna().unique()]
+        df[col] = df[col].replace(invalid_values, np.nan)
+    
+    # 修剪极端值（排除ID列）
+    numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns.difference(['id'])
+    for col in numeric_cols:
+        df[col] = df[col].clip(*df[col].quantile([0.01, 0.99]))
+    
+    # 填充缺失值
+    for col in numeric_cols:
+        df[col].fillna(df[col].median(), inplace=True)
+    for col in categorical_cols:
+        df[col].fillna(df[col].mode()[0], inplace=True)
+    
+    return df
+
+def save_distribution_plots(df, dataset_name):
+    """静默保存分布图表"""
+    # 数值变量箱线图
+    numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns.difference(['id'])
+    if len(numeric_cols) > 0:
+        plt.figure(figsize=(12, 6))
+        sns.boxplot(data=df[numeric_cols])
+        plt.title(f'{dataset_name} - Numeric Variables')
+        plt.xticks(rotation=45)
+        plt.savefig(f'plots/{dataset_name}_numeric.png', bbox_inches='tight')
+        plt.close()
+    
+    # 分类变量计数图（示例：health_status）
+    if 'health_status' in df.columns:
+        plt.figure(figsize=(10, 4))
+        sns.countplot(data=df, x='health_status', 
+                     order=['Excellent', 'Good', 'Fair', 'Poor'])
+        plt.title(f'{dataset_name} - Health Status')
+        plt.savefig(f'plots/{dataset_name}_health.png', bbox_inches='tight')
+        plt.close()
+
+# 处理所有数据集
+datasets = {
+    'CHNS': 'data/CHNS_data_with_issues.csv',
+    'CHARLS': 'data/CHARLS_data_with_issues.csv',
+    'NHANES': 'data/NHANES_data_with_issues.csv',
+    'UKB': 'data/UKB_data_with_issues.csv'
+}
+
+for name, path in datasets.items():
+    # 静默处理
+    df = pd.read_csv(path)
+    df_cleaned = clean_data(df)
+    df_cleaned.to_csv(f'data/cleaned/{name}_cleaned.csv', index=False)
+    save_distribution_plots(df_cleaned, name)
+
+print("所有数据集已静默处理完成，结果保存在 data/cleaned 和 plots 目录")
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy import stats
+import os
+
+# 配置输出目录
+os.makedirs('analysis_results', exist_ok=True)
+os.makedirs('analysis_plots', exist_ok=True)
+
+def analyze_dataset(df, dataset_name):
+    """执行分析并保存结果"""
+    # 初始化分析结果字典
+    analysis = {'dataset': dataset_name}
+    
+    # --- 数值变量分析 ---
+    numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns.difference(['id'])
+    if len(numeric_cols) > 0:
+        num_stats = df[numeric_cols].describe(percentiles=[.25, .5, .75]).T
+        num_stats['skewness'] = df[numeric_cols].skew()
+        num_stats['kurtosis'] = df[numeric_cols].kurtosis()
+        analysis['numeric_stats'] = num_stats.round(2)
+        
+        # 绘制数值变量分布图
+        plt.figure(figsize=(15, 8))
+        for i, col in enumerate(numeric_cols, 1):
+            plt.subplot(2, 3, i)
+            sns.histplot(df[col], kde=True)
+            plt.title(f'{col} Distribution')
+        plt.tight_layout()
+        plt.savefig(f'analysis_plots/{dataset_name}_numeric_dist.png', dpi=300)
+        plt.close()
+    
+    # --- 分类变量分析 ---
+    categorical_cols = df.select_dtypes(include=['object']).columns
+    if len(categorical_cols) > 0:
+        cat_stats = {}
+        for col in categorical_cols:
+            cat_stats[col] = df[col].value_counts(normalize=True).round(3)
+        analysis['categorical_stats'] = cat_stats
+        
+        # 绘制分类变量分布图
+        plt.figure(figsize=(15, 4))
+        for i, col in enumerate(categorical_cols, 1):
+            plt.subplot(1, len(categorical_cols), i)
+            sns.countplot(data=df, x=col, order=df[col].value_counts().index)
+            plt.title(f'{col} Distribution')
+            plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.savefig(f'analysis_plots/{dataset_name}_categorical_dist.png', dpi=300)
+        plt.close()
+    
+    # --- 关键关系分析 ---
+    if ('gender' in df.columns) and ('income' in df.columns):
+        plt.figure(figsize=(10, 6))
+        sns.boxplot(data=df, x='gender', y='income')
+        plt.title('Income by Gender')
+        plt.savefig(f'analysis_plots/{dataset_name}_income_gender.png', dpi=300)
+        plt.close()
+    
+    if ('age' in df.columns) and ('bmi' in df.columns):
+        plt.figure(figsize=(10, 6))
+        sns.regplot(data=df, x='age', y='bmi', scatter_kws={'alpha':0.3})
+        plt.title('BMI vs Age')
+        plt.savefig(f'analysis_plots/{dataset_name}_age_bmi.png', dpi=300)
+        plt.close()
+    
+    return analysis
+
+# 加载清洗后的数据
+datasets = {
+    'CHNS': 'data/cleaned/CHNS_cleaned.csv',
+    'CHARLS': 'data/cleaned/CHARLS_cleaned.csv',
+    'NHANES': 'data/cleaned/NHANES_cleaned.csv',
+    'UKB': 'data/cleaned/UKB_cleaned.csv'
+}
+
+all_results = {}
+for name, path in datasets.items():
+    df = pd.read_csv(path)
+    all_results[name] = analyze_dataset(df, name)
+
+# 保存分析结果为HTML
+with open('analysis_results/summary.html', 'w') as f:
+    f.write("<h1>Dataset Analysis Summary</h1>")
+    for name, result in all_results.items():
+        f.write(f"<h2>{name}</h2>")
+        
+        if 'numeric_stats' in result:
+            f.write("<h3>Numeric Variables</h3>")
+            f.write(result['numeric_stats'].to_html())
+            
+        if 'categorical_stats' in result:
+            f.write("<h3>Categorical Variables</h3>")
+            for col, stats in result['categorical_stats'].items():
+                f.write(f"<h4>{col}</h4>")
+                f.write(stats.to_frame().to_html())
+
+print("分析完成！结果保存在 analysis_results/ 和 analysis_plots/ 目录")
+
